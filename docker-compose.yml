@@ -1,0 +1,49 @@
+# Yozigo — local stack: MongoDB + Go API + React frontend (served by nginx).
+#   docker compose up --build        start everything  -> http://localhost:3000
+#   docker compose down -v           stop and DELETE the database volume (full reset)
+#   docker compose --profile test run --rm backend-tests   run the Go test suite in Docker
+
+services:
+  db:
+    image: mongo:8
+    ports:
+      - "${DB_HOST_PORT:-27017}:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://db:27017
+      MONGODB_DATABASE: yozigo
+      PORT: "8080"
+      APP_ENV: ${APP_ENV:-development}
+      CINEMA_TIMEZONE: ${CINEMA_TIMEZONE:-Asia/Kolkata}
+      SEED_ON_START: ${SEED_ON_START:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Off unless explicitly enabled in .env
+      DEMO_LOGIN_ENABLED: ${DEMO_LOGIN_ENABLED:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-yozigo-demo}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_HOST_PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  mongodata:
